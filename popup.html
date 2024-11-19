@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Поиск УК</title>
+    <style>
+      .loader {
+        border: 6px solid #f3f3f3;
+        border-radius: 50%;
+        border-top: 6px solid #3498db;
+        width: 50px;
+        height: 50px;
+        animation: spin 1s linear infinite;
+      }
+
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Загрузка файла docx</h1>
+    <input type="file" id="fileInput" accept=".docx" />
+    <button id="processBtn">Начать</button>
+    <div
+      id="loader"
+      style="display: none; text-align: center; margin-top: 20px"
+    >
+      <div id="progressText">Обработано: 0 / 0</div>
+      <div style="margin: 10px auto">
+        <div class="loader"></div>
+      </div>
+    </div>
+    <script src="libs/mammoth.browser.min.js"></script>
+    <script defer src="script.js"></script>
+  </body>
+</html>

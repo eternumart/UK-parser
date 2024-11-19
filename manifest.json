@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Поиск УК",
+  "version": "1.0",
+  "description": "Автоматический поиск названий управляющих компаний по адресу",
+  "permissions": ["scripting", "activeTab", "storage", "webRequest", "debugger", "downloads"],
+  "host_permissions": ["http://*/*", "https://*/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon.png",
+      "48": "icon.png",
+      "128": "icon.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"]
+    }
+  ]
+}
