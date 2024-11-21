@@ -13,9 +13,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         conflictAction: "overwrite"
       }, () => {
         if (chrome.runtime.lastError) {
-          console.error("Download error:", chrome.runtime.lastError.message);
+          console.error("Ошибка загрузки:", chrome.runtime.lastError.message);
         } else {
-          console.log("Download initiated successfully.");
+          console.log("Загрузка файла успешна.");
         }
       });
     };

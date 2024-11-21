@@ -1,112 +1,49 @@
-document.getElementById("processBtn").addEventListener("click", async () => {
-  const fileInput = document.getElementById("fileInput");
-  if (!fileInput.files.length) {
-    alert("Please select a file.");
+// Показать лоадер
+function showLoader(total) {
+  const loader = document.getElementById("loader");
+  const progressText = document.getElementById("progressText");
+  const inputFile = document.getElementById("fileInput");
+  const processBtn = document.getElementById("processBtn");
+
+  if (!loader || !progressText) {
+    console.warn("Не найден элемент лоадера или текста прогресса в DOM.");
     return;
   }
 
-  const file = fileInput.files[0];
-  const arrayBuffer = await file.arrayBuffer();
-
-  // Обработка docx файла с помощью Mammoth
-  mammoth
-    .extractRawText({ arrayBuffer: arrayBuffer })
-    .then((result) => {
-      const rows = result.value
-        .split("\n")
-        .map((line) => line.trim())
-        .filter((line) => line);
-
-      console.log("Extracted rows:", rows);
-
-      const tableStartIndex = rows.findIndex((row) => /^\d+\b/.test(row));
-      if (tableStartIndex === -1) {
-        alert("Table not found in the document.");
-        return;
-      }
-
-      const tableRows = rows.slice(tableStartIndex);
-      console.log("Extracted table rows:", tableRows);
-
-      const validTableRows = parseTableRows(tableRows);
-
-      if (!validTableRows.length) {
-        alert("No valid rows found in the document.");
-        return;
-      }
-
-      console.log("Filtered table rows:", validTableRows);
-
-      showLoader(validTableRows.length);
-
-      processAddresses(validTableRows).then((finalResults) => {
-        console.log("Final results:", finalResults);
-
-        hideLoader();
-
-        const jsonBlob = new Blob([JSON.stringify(finalResults, null, 2)], {
-          type: "application/json",
-        });
-        const url = URL.createObjectURL(jsonBlob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "result.json";
-        a.click();
-        URL.revokeObjectURL(url);
-      });
-    })
-    .catch((err) => {
-      console.error("Error processing DOCX:", err);
-      alert("Failed to process the file.");
-    });
-});
-
-function parseTableRows(rows) {
-  const validTableRows = [];
-  let currentRow = [];
-
-  for (const row of rows) {
-    const columns = row.split(/\s{2,}|\t/).filter((cell) => cell);
-
-    if (columns.length === 9) {
-      validTableRows.push(columns);
-    } else if (columns.length > 0) {
-      currentRow = currentRow.concat(columns);
-      if (currentRow.length === 9) {
-        validTableRows.push(currentRow);
-        currentRow = [];
-      }
-    }
-  }
-
-  if (currentRow.length === 9) {
-    validTableRows.push(currentRow);
-  }
-
-  // Проверяем, чтобы каждая строка имела 9 колонок
-  return validTableRows.filter((row) => row.length === 9);
+  loader.style.display = "flex";
+  inputFile.style.display = "none";
+  processBtn.style.display = "none";
+  progressText.textContent = `Обработано: 0 / ${total}`;
 }
 
-function showLoader(totalCount) {
-  const loader = document.getElementById("loader");
-  loader.style.display = "block";
+// Обновить лоадер
+function updateLoader(processed, total) {
   const progressText = document.getElementById("progressText");
-  progressText.textContent = `Обработано: 0 / ${totalCount}`;
+  if (!progressText) {
+    console.warn("Не найден элемент текста прогресса в DOM.");
+    return;
+  }
+  progressText.textContent = `Обработано: ${processed} / ${total}`;
 }
 
-function updateLoader(processedCount, totalCount) {
-  const progressText = document.getElementById("progressText");
-  progressText.textContent = `Обработано: ${processedCount} / ${totalCount}`;
-}
-
+// Скрыть лоадер
 function hideLoader() {
   const loader = document.getElementById("loader");
+  const inputFile = document.getElementById("fileInput");
+  const processBtn = document.getElementById("processBtn");
+  if (!loader) {
+    console.warn("Не найден элемент лоадера в DOM.");
+    return;
+  }
+  inputFile.display = "block";
+  processBtn.style.display = "block";
   loader.style.display = "none";
 }
 
+// Обработка адресов
 async function processAddresses(dataRows) {
-  const results = [];
-  const processedAddresses = new Set();
+  const finalResults = [];
+  let processedCount = 0;
 
   for (const row of dataRows) {
     const jsonRow = {
@@ -120,67 +57,55 @@ async function processAddresses(dataRows) {
       "Полезная площадь (кв.м)": row[7],
       "Строительный объем (куб.м)": row[8],
       "УК": "",
-      "processed": false
+      "processed": false,
     };
 
-    const addressToCheck = jsonRow["Адрес здания"];
-
-    while (!jsonRow["processed"]) {
-      if (processedAddresses.has(addressToCheck)) {
-        console.log(`Skipping already processed address: ${addressToCheck}`);
-        break;
-      }
-
-      const company = await searchCompany(addressToCheck);
-
-      if (company && company !== "No results" && company !== "Already processed" && company !== "Not found") {
-        jsonRow["УК"] = company;
-        jsonRow["processed"] = true;
-        processedAddresses.add(addressToCheck); // Помечаем адрес как обработанный
-      } else if (company === "No results") {
-        console.warn(`No results for address: ${addressToCheck}`);
-        break; // Прекращаем попытки, если результатов нет
-      } else {
-        console.log(`Retrying for address: ${addressToCheck}`);
-        await new Promise(resolve => setTimeout(resolve, 2000)); // Задержка перед повтором
-      }
+    const result = await searchCompany(jsonRow["Адрес здания"]);
+    if (result) {
+      jsonRow["УК"] = result;
+      jsonRow["processed"] = true;
     }
 
-    if (jsonRow["processed"]) {
-      results.push(jsonRow);
-    }
-
-    updateLoader(results.length, dataRows.length);
+    finalResults.push(jsonRow);
+    processedCount++;
+    updateLoader(processedCount, dataRows.length);
   }
 
-  return results;
+  return finalResults;
 }
 
-
-
-function searchCompany(address) {
+// Функция поиска УК через контентный скрипт
+async function searchCompany(address) {
   return new Promise((resolve) => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs.length === 0) {
-        console.error("No active tabs found.");
-        resolve(null);
+      if (!tabs.length) {
+        console.error("Не найдена открытая вкладка.");
+        resolve("Не найдена открытая вкладка");
         return;
       }
 
       const activeTab = tabs[0];
-
       chrome.scripting.executeScript(
         {
           target: { tabId: activeTab.id },
-          files: ["content.js"]
+          files: ["content.js"],
         },
         () => {
+          if (chrome.runtime.lastError) {
+            console.error("Ошибка инжектирования скрипта в страницу:", chrome.runtime.lastError.message);
+            resolve("Для этого адреса УК не определена");
+            return;
+          }
+
           chrome.tabs.sendMessage(
             activeTab.id,
             { action: "searchAddress", address },
             (response) => {
-              if (!response || !response.result || response.result === "Already processed" || response.result === "Not found") {
-                resolve(null);
+              if (chrome.runtime.lastError) {
+                console.error("Ошибка отправки запроса:", chrome.runtime.lastError.message);
+                resolve("Для этого адреса УК не определена");
+              } else if (!response || !response.result) {
+                resolve("Для этого адреса УК не определена");
               } else {
                 resolve(response.result);
               }
@@ -191,4 +116,80 @@ function searchCompany(address) {
     });
   });
 }
+
+// Конвертация данных в CSV с BOM
+function convertToCSV(data) {
+  if (!data || !data.length) {
+    return "";
+  }
+
+  const headers = Object.keys(data[0]); // Заголовки CSV из ключей первого объекта
+  const rows = data.map((row) =>
+    headers
+      .map((header) => `"${(row[header] || "").toString().replace(/"/g, '""')}"`) // Экранируем кавычки
+      .join(",")
+  );
+
+  const csvContent = [headers.join(","), ...rows].join("\n"); // Используем \n для корректного разделения строк
+  const bom = "\uFEFF"; // BOM для поддержки кириллицы в Excel
+  return bom + csvContent;
+}
+
+
+document.getElementById("processBtn").addEventListener("click", async () => {
+  const fileInput = document.getElementById("fileInput");
+  if (!fileInput.files.length) {
+    alert("Пожалуйста, выберите файл.");
+    return;
+  }
+
+  const file = fileInput.files[0];
+  const reader = new FileReader();
+
+  reader.onload = async (event) => {
+    const csvText = event.target.result;
+    const rows = csvText
+      .split("\n")
+      .map((row) => row.split(";")) // Используем ";" как разделитель входного CSV
+      .filter((row) => row.length > 1 && row.some((cell) => cell.trim() !== ""));
+
+    if (rows.length < 2) {
+      alert("CSV файл пустой или содержит только заголовки.");
+      return;
+    }
+
+    const headers = rows[0];
+    const dataRows = rows.slice(1);
+
+    console.log("Извлеченные из файла строки:", dataRows);
+
+    if (dataRows.length === 0) {
+      alert("Нет данных для обработки.");
+      return;
+    }
+
+    showLoader(dataRows.length);
+
+    const finalResults = await processAddresses(dataRows);
+
+    console.log("Итоговые результаты:", finalResults);
+
+    hideLoader();
+
+    const csvData = convertToCSV(finalResults);
+
+    const csvBlob = new Blob([csvData], { type: "text/csv;charset=utf-8;" });
+    const csvUrl = URL.createObjectURL(csvBlob);
+    const csvLink = document.createElement("a");
+    csvLink.href = csvUrl;
+    csvLink.download = "Список адресов с управляющими компаниями.csv";
+    document.body.appendChild(csvLink); // Добавляем ссылку в DOM для клика
+    csvLink.click();
+    document.body.removeChild(csvLink); // Удаляем ссылку после скачивания
+    URL.revokeObjectURL(csvUrl);
+  };
+
+  reader.readAsText(file, "UTF-8");
+});
+
 
